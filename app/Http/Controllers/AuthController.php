@@ -103,14 +103,20 @@
                     'password.required' => 'Please enter a password.',
                 ]);
 
-                $user = User::where('email', $validatedData['email'])->first();
+                $user = User::withTrashed()->where('email', $validatedData['email'])->first();
 
                 if (!$user) {
                     return response()->json(['error' => 'User not found.'], 404);
                 }
+
                 if (!$user->verified) {
                     return response()->json(['error' => 'Please verify your email address first.'], 401);
                 }
+
+                if ($user->trashed()) {
+                    return response()->json(['error' => 'Your account has been deleted. Please contact support for assistance.'], 401);
+                }
+
                 if (!Hash::check($validatedData['password'], $user->password)) {
                     return response()->json(['error' => 'Invalid credentials.'], 401);
                 }
@@ -118,7 +124,7 @@
                 $is_admin = $user->hasRole('admin');
                 $token = $user->createToken('auth-token')->plainTextToken;
 
-                return response()->json(['token' => $token, 'user' => $user, 'is_admin' => $is_admin], 200);
+                return response()->json(['token' => $token, 'user' => $user, 'is_admin' => $is_admin, 'soft_deleted' => $user->trashed()], 200);
 
             } catch (ValidationException $e) {
                 $errors = $e->validator->errors()->all();
@@ -231,7 +237,12 @@
             try {
                 $user = Auth::user();
                 if ($user) {
+                    // Revoke all user tokens
+                    $user->tokens()->delete();
+
+                    // Delete the user
                     $user->delete();
+
                     return response()->json(['message' => 'Your account has been deleted.'], 200);
                 }
             } catch (\Exception $e) {
@@ -240,5 +251,39 @@
                 return response()->json(['error' => $errorMessage], 500);
             }
         }
+
+        public function restoreAccount(Request $request): JsonResponse
+        {
+            try {
+                $validatedData = $request->validate([
+                    'user_id' => 'required',
+                ], [
+                    'user_id.required' => 'Please enter a user ID.',
+                ]);
+
+                $userId = $validatedData['user_id'];
+                $user = User::withTrashed()->find($userId);
+
+                if (!$user) {
+                    return response()->json(['error' => 'User not found.'], 404);
+                }
+
+                if (!$user->trashed()) {
+                    return response()->json(['error' => 'Account is not soft-deleted.'], 400);
+                }
+
+                $user->restore();
+
+                return response()->json(['message' => 'User account has been undeleted.'], 200);
+            } catch (ValidationException $e) {
+                $errors = $e->validator->errors()->all();
+                return response()->json(['errors' => $errors], 422);
+            } catch (\Exception $e) {
+                $errorMessage = $e->getMessage();
+                Log::error($errorMessage);
+                return response()->json(['error' => $errorMessage], 500);
+            }
+        }
+
 
     }

@@ -50,6 +50,7 @@ Route::group(['middleware' => ['auth:sanctum', 'role:admin']], function(){
     Route::get('/admin/dashboard/profile', [AdminProfileController::class, 'index'])->name('admin.dashboard.profile');
     Route::post('/admin/assign-roles', [AdminController::class, 'assign_roles']);
     Route::post('/admin/logout', [AuthController::class, 'logout']);
+    Route::post('/admin/restore-account', [AuthController::class, 'restoreAccount']);
 });
 
 Route::apiResource('users', AdminUserController::class);
